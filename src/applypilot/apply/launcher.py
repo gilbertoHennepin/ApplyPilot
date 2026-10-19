@@ -99,6 +99,12 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
     Returns:
         Job dict or None if the queue is empty.
     """
+    # APPLY_WITHOUT_TAILORING=1 applies with the base resume when a job has no tailored one
+    skip_tailoring = os.environ.get("APPLY_WITHOUT_TAILORING", "").lower() in ("1", "true", "yes")
+    tailor_cond = "1=1" if skip_tailoring else "tailored_resume_path IS NOT NULL"
+    score_cond = "(fit_score >= ? OR fit_score IS NULL)" if skip_tailoring else "fit_score >= ?"
+    text_cond = "AND full_description IS NOT NULL" if skip_tailoring else ""
+
     conn = get_connection()
     try:
         conn.execute("BEGIN IMMEDIATE")
@@ -110,10 +116,11 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
                        fit_score, location, full_description, cover_letter_path
                 FROM jobs
                 WHERE (url = ? OR application_url = ? OR application_url LIKE ? OR url LIKE ?)
-                  AND tailored_resume_path IS NOT NULL
+                  AND {tailor_cond}
+                  {text_cond}
                   AND apply_status != 'in_progress'
                 LIMIT 1
-            """, (target_url, target_url, like, like)).fetchone()
+            """.format(tailor_cond=tailor_cond, text_cond=text_cond), (target_url, target_url, like, like)).fetchone()
         else:
             blocked_sites, blocked_patterns = _load_blocked()
             # Build parameterized filters to avoid SQL injection
@@ -131,15 +138,18 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
                 SELECT url, title, site, application_url, tailored_resume_path,
                        fit_score, location, full_description, cover_letter_path
                 FROM jobs
-                WHERE tailored_resume_path IS NOT NULL
+                WHERE {tailor_cond}
+                  {text_cond}
                   AND (apply_status IS NULL OR apply_status = 'failed')
                   AND (apply_attempts IS NULL OR apply_attempts < ?)
-                  AND fit_score >= ?
+                  AND {score_cond}
                   {site_clause}
                   {url_clauses}
                 ORDER BY fit_score DESC, url
                 LIMIT 1
-            """, [config.DEFAULTS["max_apply_attempts"]] + params).fetchone()
+            """.format(tailor_cond=tailor_cond, text_cond=text_cond, score_cond=score_cond,
+                       site_clause=site_clause, url_clauses=url_clauses),
+                [config.DEFAULTS["max_apply_attempts"]] + params).fetchone()
 
         if not row:
             conn.rollback()
@@ -166,7 +176,10 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
         """, (f"worker-{worker_id}", now, row["url"]))
         conn.commit()
 
-        return dict(row)
+        job = dict(row)
+        if skip_tailoring and not job.get("tailored_resume_path"):
+            job["tailored_resume_path"] = str(config.RESUME_PATH)  # base resume; PDF is next to it
+        return job
     except Exception:
         conn.rollback()
         raise
