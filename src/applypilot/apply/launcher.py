@@ -118,7 +118,7 @@ def acquire_job(target_url: str | None = None, min_score: int = 7,
                 WHERE (url = ? OR application_url = ? OR application_url LIKE ? OR url LIKE ?)
                   AND {tailor_cond}
                   {text_cond}
-                  AND apply_status != 'in_progress'
+                  AND (apply_status IS NULL OR apply_status != 'in_progress')
                 LIMIT 1
             """.format(tailor_cond=tailor_cond, text_cond=text_cond), (target_url, target_url, like, like)).fetchone()
         else:
