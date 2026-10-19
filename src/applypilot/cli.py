@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import logging
 from typing import Optional
 
@@ -198,7 +199,7 @@ def apply(
         raise typer.Exit(code=1)
 
     # Check 3: Tailored resumes exist (skip for --gen with --url)
-    if not (gen and url):
+    if not (gen and url) and not os.environ.get("APPLY_WITHOUT_TAILORING"):
         conn = get_connection()
         ready = conn.execute(
             "SELECT COUNT(*) FROM jobs WHERE tailored_resume_path IS NOT NULL AND applied_at IS NULL"
