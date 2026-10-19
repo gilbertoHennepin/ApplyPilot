@@ -100,7 +100,7 @@ def _build_location_check(profile: dict, search_config: dict) -> str:
     """
     personal = profile["personal"]
     location_cfg = search_config.get("location", {})
-    accept_patterns = location_cfg.get("accept_patterns", [])
+    accept_patterns = search_config.get("location_accept") or location_cfg.get("accept_patterns", [])
     primary_city = personal.get("city", location_cfg.get("primary", "your city"))
 
     # Build the list of acceptable cities for hybrid/onsite
@@ -173,7 +173,7 @@ def _build_screening_section(profile: dict) -> str:
 
     return f"""== SCREENING QUESTIONS (be strategic) ==
 Hard facts -> answer truthfully from the profile. No guessing. This includes:
-  - Location/relocation: lives in {city}, cannot relocate
+  - Location/relocation: lives in {city}, willing to relocate: {profile.get("relocation", {}).get("willing_to_relocate", "No")}
   - Work authorization: {work_auth.get('legally_authorized_to_work', 'see profile')}
   - Citizenship, clearance, licenses, certifications: answer from profile only
   - Criminal/background: answer from profile only
